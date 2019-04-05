@@ -1,14 +1,20 @@
 package main
 
 import (
-	"log"
 	"net/http"
+	"os"
+	"time"
 
+	"github.com/go-kit/kit/log"
 	httptransport "github.com/go-kit/kit/transport/http"
 )
 
 func main() {
-	svc := stringService{}
+	logger := log.NewLogfmtLogger(os.Stderr)
+
+	var svc StringService
+	svc = stringService{}
+	svc = loggingMiddleware{logger, svc}
 
 	uppercaseHandler := httptransport.NewServer(
 		makeUppercaseEndpoint(svc),
@@ -24,5 +30,38 @@ func main() {
 
 	http.Handle("/uppercase", uppercaseHandler)
 	http.Handle("/count", countHandler)
-	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+type loggingMiddleware struct {
+	logger log.Logger
+	next   StringService
+}
+
+func (mw loggingMiddleware) Uppercase(s string) (output string, err error) {
+	defer func(begin time.Time) {
+		mw.logger.Log(
+			"method", "uppercase",
+			"input", s,
+			"output", output,
+			"err", err,
+			"took", time.Since(begin),
+		)
+	}(time.Now())
+
+	output, err = mw.next.Uppercase(s)
+	return
+}
+
+func (mw loggingMiddleware) Count(s string) (n int) {
+	defer func(begin time.Time) {
+		mw.logger.Log(
+			"method", "count",
+			"input", s,
+			"n", n,
+			"took", time.Since(begin),
+		)
+	}(time.Now())
+
+	n = mw.next.Count(s)
+	return
 }
