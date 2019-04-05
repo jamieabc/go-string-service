@@ -1,20 +1,47 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics"
+	kitprometheus "github.com/go-kit/kit/metrics/prometheus"
 	httptransport "github.com/go-kit/kit/transport/http"
+	stdprometheus "github.com/prometheus/client_golang/prometheus"
 )
 
 func main() {
 	logger := log.NewLogfmtLogger(os.Stderr)
 
+	fieldKeys := []string{"method", "error"}
+	requestCount := kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		Namespace: "my_group",
+		Subsystem: "string_service",
+		Name:      "request_count",
+		Help:      "Number of requests received",
+	}, fieldKeys)
+
+	requestLatency := kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
+		Namespace: "my_group",
+		Subsystem: "string_service",
+		Name:      "request_latency_microsecondse",
+		Help:      "Total duration of requests in microseconds",
+	}, fieldKeys)
+
+	countResult := kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
+		Namespace: "my_group",
+		Subsystem: "string_service",
+		Name:      "count_result",
+		Help:      "The result of each count method.",
+	}, []string{})
+
 	var svc StringService
 	svc = stringService{}
 	svc = loggingMiddleware{logger, svc}
+	svc = instrumentingMiddleware{requestCount, requestLatency, countResult, svc}
 
 	uppercaseHandler := httptransport.NewServer(
 		makeUppercaseEndpoint(svc),
@@ -60,6 +87,38 @@ func (mw loggingMiddleware) Count(s string) (n int) {
 			"n", n,
 			"took", time.Since(begin),
 		)
+	}(time.Now())
+
+	n = mw.next.Count(s)
+	return
+}
+
+type instrumentingMiddleware struct {
+	requestCount   metrics.Counter
+	requestLatency metrics.Histogram
+	countResult    metrics.Histogram
+	next           StringService
+}
+
+// TODO: hwo they pair strings into log?
+// TODO: what is fmt.Sprintf(err != nil)
+func (mw instrumentingMiddleware) Uppercase(s string) (output string, err error) {
+	defer func(begin time.Time) {
+		lvs := []string{"method", "uppercase", "error", fmt.Sprintf("%s", err != nil)}
+		mw.requestCount.With(lvs...).Add(1)
+		mw.requestLatency.With(lvs...).Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	output, err = mw.next.Uppercase(s)
+	return
+}
+
+func (mw instrumentingMiddleware) Count(s string) (n int) {
+	defer func(begin time.Time) {
+		lvs := []string{"method", "count", "error", "false"}
+		mw.requestCount.With(lvs...).Add(1)
+		mw.requestLatency.With(lvs...).Observe(time.Since(begin).Seconds())
+		mw.countResult.Observe(float64(n))
 	}(time.Now())
 
 	n = mw.next.Count(s)
