@@ -27,3 +27,5 @@ func (stringService) Uppercase(s string) (string, error) {
 func (stringService) Count(s string) int {
 	return len(s)
 }
+
+type ServiceMiddleware func(StringService) StringService

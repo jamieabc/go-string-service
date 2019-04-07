@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"os"
 
@@ -42,11 +43,20 @@ func main() {
 
 	var svc StringService
 	svc = stringService{}
+	svc = proxyingMiddleware(context.Background(), "http://localhost:8080/u")(svc)
 	svc = loggingMiddleware{logger, svc}
 	svc = instrumentingMiddleware{requestCount, requestLatency, countResult, svc}
 
 	uppercaseHandler := httptransport.NewServer(
 		makeUppercaseEndpoint(svc),
+		decodeUppercaseRequest,
+		encodeResponse,
+	)
+
+	originalUppercaseHandler := httptransport.NewServer(
+		func(_ context.Context, request interface{}) (interface{}, error) {
+			return uppercaseResponse{"aaron", ""}, nil
+		},
 		decodeUppercaseRequest,
 		encodeResponse,
 	)
@@ -58,6 +68,7 @@ func main() {
 	)
 
 	http.Handle("/uppercase", uppercaseHandler)
+	http.Handle("/u", originalUppercaseHandler)
 	http.Handle("/count", countHandler)
 	http.Handle("/metrics", promhttp.Handler())
 
