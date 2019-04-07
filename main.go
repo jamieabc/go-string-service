@@ -44,8 +44,8 @@ func main() {
 	var svc StringService
 	svc = stringService{}
 	svc = proxyingMiddleware(context.Background(), "http://localhost:8080/u")(svc)
-	svc = loggingMiddleware{logger, svc}
-	svc = instrumentingMiddleware{requestCount, requestLatency, countResult, svc}
+	svc = loggingMiddleware(logger)(svc)
+	svc = instrumentingMiddleware(requestCount, requestLatency, countResult)(svc)
 
 	uppercaseHandler := httptransport.NewServer(
 		makeUppercaseEndpoint(svc),
