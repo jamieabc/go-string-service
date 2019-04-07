@@ -53,14 +53,6 @@ func main() {
 		encodeResponse,
 	)
 
-	originalUppercaseHandler := httptransport.NewServer(
-		func(_ context.Context, request interface{}) (interface{}, error) {
-			return uppercaseResponse{"aaron", ""}, nil
-		},
-		decodeUppercaseRequest,
-		encodeResponse,
-	)
-
 	countHandler := httptransport.NewServer(
 		makeCountEndpoint(svc),
 		decodeCountRequest,
@@ -68,7 +60,6 @@ func main() {
 	)
 
 	http.Handle("/uppercase", uppercaseHandler)
-	http.Handle("/u", originalUppercaseHandler)
 	http.Handle("/count", countHandler)
 	http.Handle("/metrics", promhttp.Handler())
 
