@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"net/http"
 	"os"
 
@@ -12,12 +13,20 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const (
-	port = ":8080"
-)
-
 func main() {
-	logger := log.NewLogfmtLogger(os.Stderr)
+	const (
+		port = ":8080"
+	)
+
+	var (
+		listen = flag.String("listen", port, "HTTP listen address")
+		proxy  = flag.String("proxy", "", "Optional comma-separated list of URLs to proxy uppercase reqeusts")
+	)
+	flag.Parse()
+
+	var logger log.Logger
+	logger = log.NewLogfmtLogger(os.Stderr)
+	logger = log.With(logger, "listen", *listen, "caller", log.DefaultCaller)
 
 	fieldKeys := []string{"method", "error"}
 	requestCount := kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{
@@ -43,7 +52,7 @@ func main() {
 
 	var svc StringService
 	svc = stringService{}
-	svc = proxyingMiddleware(context.Background(), "http://localhost:8080/u")(svc)
+	svc = proxyingMiddleware(context.Background(), *proxy, logger)(svc)
 	svc = loggingMiddleware(logger)(svc)
 	svc = instrumentingMiddleware(requestCount, requestLatency, countResult)(svc)
 
